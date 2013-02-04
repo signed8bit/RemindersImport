@@ -72,37 +72,57 @@ NSArray* importableReminderItems(EKEventStore* theEventStore)
 	return qualifiedItems;
 }
 
-NSString* omniFocusAddTaskScriptTemplate()
+NSString* omniFocusAddTaskScript(NSString* newTaskTitle, NSString* startDateString, NSString* dueDateString)
 {
-	return @"\
--- Work around a problem where if OmniFocus is not already running,\n\
--- it might hang when trying to handle our request just as it's launching\n\
-set isRunning to true\n\
-tell application \"System Events\"\n\
-	try\n\
-		application process \"OmniFocus\"\n\
-	on error\n\
-		set isRunning to false\n\
-	end try\n\
-end tell\n\
-\n\
--- Wait a good long 10 seconds to make sure OmniFocus has time to launch\n\
-if (isRunning is false) then\n\
-	tell application \"OmniFocus\" to launch\n\
-	delay 10.0\n\
-end if\n\
-\
-tell application \"OmniFocus\"\n\
-	tell default document\n\
-		make new inbox task with properties {name:\"%@\", start date:date \"%@\", due date:date \"%@\"}\n\
-	end tell\n\
-end tell";
+    NSMutableString* script = [[[NSMutableString alloc] initWithString:@"\
+                                   -- Work around a problem where if OmniFocus is not already running,\n\
+                                   -- it might hang when trying to handle our request just as it's launching\n\
+                                   set isRunning to true\n\
+                                   tell application \"System Events\"\n\
+                                       try\n\
+                                           application process \"OmniFocus\"\n\
+                                       on error\n\
+                                           set isRunning to false\n\
+                                       end try\n\
+                                   end tell\n\
+                                   \n\
+                                   -- Wait a good long 10 seconds to make sure OmniFocus has time to launch\n\
+                                   if (isRunning is false) then\n\
+                                       tell application \"OmniFocus\" to launch\n\
+                                       delay 10.0\n\
+                                   end if\n\
+                                   \
+                                   tell application \"OmniFocus\"\n\
+                                       tell default document\n\
+                                       make new inbox task with properties {name:\""] autorelease];
+    [script appendString:newTaskTitle];
+    [script appendString:@"\""];
+
+    // Handle the possibility where no date was set
+    if (startDateString != nil)
+    {
+        [script appendString:@", start date:date \""];
+        [script appendString:startDateString];
+        [script appendString:@"\""];
+    }
+
+    if (dueDateString != nil)
+    {
+        [script appendString:@", due date:date \""];
+        [script appendString:dueDateString];
+        [script appendString:@"\""];
+    }
+
+    // Complete the script
+    [script appendString:@"}\n end tell\n end tell"];
+	
+    return [NSString stringWithString:script];
 }
 
 BOOL makeOmniFocusInboxTaskFromReminderInfo(NSString* newTaskTitle, NSString* startDateString, NSString* dueDateString)
 {
 	BOOL didSucceed = NO;
-	NSString* newTaskAppleScript = [NSString stringWithFormat:omniFocusAddTaskScriptTemplate(), newTaskTitle, startDateString, dueDateString];
+    NSString* newTaskAppleScript = omniFocusAddTaskScript(newTaskTitle, startDateString, dueDateString);
 	NSAppleScript* addTaskScript = [[[NSAppleScript alloc] initWithSource:newTaskAppleScript] autorelease];
 	NSDictionary* anyError = nil;
 	(void) [addTaskScript executeAndReturnError:&anyError];
@@ -141,10 +161,19 @@ NSString* scriptableDateStringFromComponents(NSDateComponents* inComponents)
 	// and designed to match the example like "Thursday, January 31, 2013 4:32:40 PM". I observed this
 	// format as the default format returned by AppleScript on my US-based English Mac. I can't vouch
 	// for how well this will work in other locales, but let me know if you try it!
-	NSString* dateFormatString = @"EEEE, LLLL d y hh:mm:ss a";
-	NSDate *targetDate = [gregorianCalendar() dateFromComponents:inComponents];
-	NSDateFormatter* dateFormatter = gregorianFormatterWithFormat(dateFormatString);
-	return [dateFormatter stringFromDate:targetDate];
+    
+    if (inComponents != nil)
+    {
+        NSString* dateFormatString = @"EEEE, LLLL d y hh:mm:ss a";
+        NSDate *targetDate = [gregorianCalendar() dateFromComponents:inComponents];
+        NSDateFormatter* dateFormatter = gregorianFormatterWithFormat(dateFormatString);
+        
+        return [dateFormatter stringFromDate:targetDate];
+    }
+    else
+    {
+        return nil;
+    }
 }
 
 int main(int argc, const char * argv[])
